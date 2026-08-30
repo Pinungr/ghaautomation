@@ -1,2 +1,1 @@
-workflows/legacy_cleanup.json
-workflows/deprecated_report.json
+workflows/customer_sync.json
