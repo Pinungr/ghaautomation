@@ -1,2 +1,4 @@
 workflows/legacy_cleanup.json
 workflows/deprecated_report.json
+workflows/testing.json
+workflows/testing2.json
