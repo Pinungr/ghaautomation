@@ -246,6 +246,7 @@ def promote(
         git=git,
         changes=staging_changes,
         inventory=inv,
+        cfg=cfg,
         source_rev=f"refs/remotes/{git.remote}/{env.source}",
         staging_rev=staging_rev,
         metadata_paths={PROMOTION_FILENAME, cfg.workflows_list_file},

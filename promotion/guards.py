@@ -75,15 +75,17 @@ def validate_staging_changes(
     git: object,
     changes: list[tuple[str, str]],
     inventory: Inventory,
+    cfg: Config,
     source_rev: str,
     staging_rev: str,
     metadata_paths: set[str],
 ) -> tuple[set[str], set[str], list[tuple[str, str]]]:
     """Authorize pre-existing temporary-branch changes before any checkout.
 
-    A manually prepared path is admissible only when it is declared in
-    ``promotion.txt`` and is byte-for-byte the approved source version (or is a
-    declared deletion). Metadata is deliberately excluded from this comparison.
+    A listed path is admissible only when it is byte-for-byte the approved
+    source version (or is a declared deletion). An unlisted workflow is also
+    allowed only when it already exists with identical content on the approved
+    source branch. Metadata is deliberately excluded from this comparison.
     ``git`` is structural here to avoid coupling guards to the command wrapper.
     """
     entry_by_path = {entry.path: entry for entry in inventory.entries}
@@ -93,9 +95,31 @@ def validate_staging_changes(
         if path not in metadata_paths and path not in entry_by_path
     )
 
+    mismatches: list[str] = []
+    for status, path in additional_changes:
+        if not cfg.is_workflow_path(path):
+            continue
+        if status[:1] == "D":
+            mismatches.append(
+                f"{path}: staging workflow deletion must be declared in promotion.txt"
+            )
+            continue
+        source_kind = git.object_type(source_rev, path)
+        staging_kind = git.object_type(staging_rev, path)
+        if source_kind != "blob" or staging_kind != "blob":
+            mismatches.append(
+                f"{path}: staging workflow does not exist as a file in both the "
+                "temporary and approved source branches"
+            )
+            continue
+        if git.read_file_bytes(staging_rev, path) != git.read_file_bytes(source_rev, path):
+            mismatches.append(
+                f"{path}: staging workflow content does not match approved source "
+                f"'{source_rev.rsplit('/', 1)[-1]}'"
+            )
+
     manually_prepared_promotes: set[str] = set()
     manually_prepared_deletes: set[str] = set()
-    mismatches: list[str] = []
     for status, path in changes:
         if path in metadata_paths or path not in entry_by_path:
             continue

@@ -554,27 +554,49 @@ def test_promotion_file_is_permitted_metadata(tmp_path: Path) -> None:
     assert result.pr is not None
 
 
-def test_unlisted_staging_workflow_is_preserved_and_listed_once(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("target", "workflow_path", "content"),
+    [
+        ("PSUP", "workflows/new.json", '{"workflow": "new"}\n'),
+        ("PROD", "workflows/psup.json", '{"workflow": "psup"}\n'),
+    ],
+)
+def test_source_equivalent_unlisted_staging_workflow_is_preserved_and_listed_once(
+    tmp_path: Path, target: str, workflow_path: str, content: str
+) -> None:
+    remote, runner = _make_repository(
+        tmp_path,
+        "file2\n",
+        deployment_target=target,
+        manual_files={workflow_path: content},
+        staging_workflows_list="old.json\n",
+    )
+    messages: list[str] = []
+
+    result, _ = _run_promotion(runner, target, messages)
+
+    assert _remote_text(remote, result.staging_branch, workflow_path) == content.strip()
+    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == (
+        f"old.json\n{workflow_path.removeprefix('workflows/')}"
+    )
+    assert ("A", workflow_path) in result.additional_staging_changes
+    assert any(workflow_path in message for message in messages)
+
+
+def test_unlisted_staging_workflow_not_in_source_fails_before_push(tmp_path: Path) -> None:
     remote, runner = _make_repository(
         tmp_path,
         "file2\n",
         manual_files={"workflows/manual.json": '{"workflow": "manual"}\n'},
-        staging_workflows_list=(
-            "old.json\n./workflows/manual.json\nworkflows//manual.json\n"
-        ),
     )
-    messages: list[str] = []
+    before = _remote_sha(remote, "reltest_30_08_2026")
 
-    result, _ = _run_promotion(runner, "PSUP", messages)
+    with pytest.raises(PromotionError) as caught:
+        _run_promotion(runner, "PSUP")
 
-    assert _remote_text(remote, result.staging_branch, "workflows/manual.json") == (
-        '{"workflow": "manual"}'
-    )
-    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == (
-        "old.json\nmanual.json"
-    )
-    assert ("A", "workflows/manual.json") in result.additional_staging_changes
-    assert any("workflows/manual.json" in message for message in messages)
+    assert caught.value.code == E_STAGING_SOURCE_MISMATCH
+    assert "workflows/manual.json" in caught.value.details[0]
+    assert _remote_sha(remote, "reltest_30_08_2026") == before
 
 
 def test_multiple_additional_staging_changes_are_in_pr_body_and_summary(
