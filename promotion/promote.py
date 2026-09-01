@@ -269,13 +269,27 @@ def promote(
         git.remove_paths(paths_to_delete)
         log(f"Deleted {len(paths_to_delete)} file(s)")
 
-    # 10. Maintain the workflow list from every non-deleted workflow in the
-    # final intended PR, including preserved user staging changes.
+    # 10. Maintain the workflow list from explicitly promoted workflows and
+    # workflows that already differ on the staging branch.  Do not infer entries
+    # from the source branch: it can contain unrelated workflows that are not
+    # part of this promotion.
     intended_changes = git.working_changes_from(base_sha)
+    final_non_deleted_paths = {
+        path for status, path in intended_changes if status[:1] != "D"
+    }
+    staging_workflow_paths = [
+        path
+        for status, path in staging_changes
+        if status[:1] != "D" and cfg.is_workflow_path(path)
+    ]
+    allowed_workflow_paths = [
+        *inv.workflow_promote_paths,
+        *staging_workflow_paths,
+    ]
     required_workflow_paths = [
         path
-        for status, path in intended_changes
-        if status[:1] != "D" and cfg.is_workflow_path(path)
+        for path in dict.fromkeys(allowed_workflow_paths)
+        if path in final_non_deleted_paths
     ]
     existing_list = ""
     if git.object_type("HEAD", cfg.workflows_list_file) == "blob":

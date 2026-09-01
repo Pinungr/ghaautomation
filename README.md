@@ -48,5 +48,5 @@ full PR diff contains only approved paths.
 | `Notebooks/` | Jupyter notebooks. |
 | `workflows/` | Job definitions. Drives the `workflows_list.txt` rebuild. |
 | `test/` | Tests for the sample content. |
-| `workflows_list.txt` | Rebuilt automatically whenever `workflows/` paths are promoted. |
+| `workflows_list.txt` | Normalized automatically for workflow paths in `promotion.txt` or staging; stores paths relative to `workflows/` (for example, `team/job.json`). |
 | `promotion/` | The promotion pipeline itself. Standard library only. |

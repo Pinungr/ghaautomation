@@ -110,7 +110,7 @@ def _make_repository(
     _write(author, "file2", "base version\n")
     _write(author, "file3", "base version\n")
     _write(author, "workflows/old.json", '{"workflow": "old"}\n')
-    _write(author, "workflows_list.txt", "workflows/old.json\n")
+    _write(author, "workflows_list.txt", "old.json\n")
     _git(author, "add", ".")
     _git(author, "commit", "-m", "Base promotion content")
     _git(author, "branch", "-M", "master")
@@ -127,6 +127,7 @@ def _make_repository(
     _write(author, "file2", "master version\n")
     _write(author, "file3", "master version\n")
     _write(author, "workflows/new.json", '{"workflow": "new"}\n')
+    _write(author, "workflows/pinaki/zyz.json", '{"workflow": "nested"}\n')
     _git(author, "add", ".")
     _git(author, "commit", "-m", "Master promotion content")
     _git(author, "push")
@@ -265,7 +266,7 @@ def test_master_workflow_promotion_rebuilds_workflows_list(tmp_path: Path) -> No
     result, _ = _run_promotion(runner, "MASTER")
 
     assert _remote_text(remote, result.staging_branch, "workflows/dev.json") == '{"workflow": "dev"}'
-    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == "workflows/old.json\nworkflows/dev.json"
+    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == "old.json\ndev.json"
     assert result.release_branch is None
 
 
@@ -391,7 +392,35 @@ def test_workflow_promotion_rebuilds_workflows_list_on_the_staging_branch(tmp_pa
     result, _ = _run_promotion(runner)
 
     assert _remote_text(remote, result.staging_branch, "workflows/new.json") == '{"workflow": "new"}'
-    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == "workflows/old.json\nworkflows/new.json"
+    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == "old.json\nnew.json"
+
+
+@pytest.mark.parametrize("target", ["PSUP", "PROD"])
+def test_source_only_workflows_are_not_added_to_workflows_list(
+    tmp_path: Path, target: str
+) -> None:
+    """Only promotion.txt and pre-existing staging changes may add entries."""
+    remote, runner = _make_repository(
+        tmp_path, "file1\n", deployment_target=target
+    )
+
+    result, _ = _run_promotion(runner, target)
+
+    # MASTER has workflows/new.json and workflows/pinaki/zyz.json; PSUP has
+    # workflows/psup.json.  Neither source-only workflow belongs in this run.
+    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == "old.json"
+    assert result.workflows_list_entries is None
+
+
+def test_nested_workflow_is_stored_relative_to_workflows_directory(tmp_path: Path) -> None:
+    remote, runner = _make_repository(tmp_path, "workflows/pinaki/zyz.json\n")
+
+    result, _ = _run_promotion(runner)
+
+    assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == (
+        "old.json\npinaki/zyz.json"
+    )
+    assert result.workflows_list_entries == ["old.json", "pinaki/zyz.json"]
 
 
 def test_delete_from_promotion_txt_is_applied_to_the_existing_staging_branch(tmp_path: Path) -> None:
@@ -475,7 +504,7 @@ def test_workflow_list_normalizes_and_deduplicates_existing_entries(tmp_path: Pa
     result, _ = _run_promotion(runner)
 
     assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == (
-        "workflows/old.json\nworkflows/psup.json\nworkflows/new.json"
+        "old.json\npsup.json\nnew.json"
     )
 
 
@@ -511,13 +540,13 @@ def test_promotion_file_is_permitted_metadata(tmp_path: Path) -> None:
     assert result.pr is not None
 
 
-def test_additional_workflow_is_preserved_listed_once_and_warned(tmp_path: Path) -> None:
+def test_unlisted_staging_workflow_is_preserved_and_listed_once(tmp_path: Path) -> None:
     remote, runner = _make_repository(
         tmp_path,
         "file2\n",
         manual_files={"workflows/manual.json": '{"workflow": "manual"}\n'},
         staging_workflows_list=(
-            "workflows/old.json\n./workflows/manual.json\nworkflows//manual.json\n"
+            "old.json\n./workflows/manual.json\nworkflows//manual.json\n"
         ),
     )
     messages: list[str] = []
@@ -528,7 +557,7 @@ def test_additional_workflow_is_preserved_listed_once_and_warned(tmp_path: Path)
         '{"workflow": "manual"}'
     )
     assert _remote_text(remote, result.staging_branch, "workflows_list.txt") == (
-        "workflows/old.json\nworkflows/manual.json"
+        "old.json\nmanual.json"
     )
     assert ("A", "workflows/manual.json") in result.additional_staging_changes
     assert any("workflows/manual.json" in message for message in messages)

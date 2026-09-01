@@ -7,9 +7,25 @@ import re
 from .config import Config
 from .errors import E_WFLIST_SYNC, PromotionError
 
+_WORKFLOWS_PREFIX = "workflows/"
+
+
+def _relative_path(repository_path: str, cfg: Config) -> str:
+    """Convert a repository workflow path to its list-file representation."""
+    if not repository_path.startswith(_WORKFLOWS_PREFIX) or not cfg.is_workflow_path(
+        repository_path
+    ):
+        raise PromotionError(
+            E_WFLIST_SYNC,
+            f"{cfg.workflows_list_file} cannot safely represent this workflow path.",
+            details=[repository_path],
+            remedy="Use repository workflow paths below workflows/.",
+        )
+    return repository_path[len(_WORKFLOWS_PREFIX) :]
+
 
 def _normalize_entry(raw: str, cfg: Config) -> str | None:
-    """Normalize harmless spelling variants without guessing different paths."""
+    """Normalize one legacy/full or canonical/relative list entry."""
     entry = raw.strip()
     if not entry:
         return None
@@ -19,12 +35,21 @@ def _normalize_entry(raw: str, cfg: Config) -> str | None:
     entry = re.sub(r"/+", "/", entry)
     if entry.startswith("/"):
         entry = entry.lstrip("/")
-    if not cfg.is_workflow_path(entry):
+    if entry.startswith(_WORKFLOWS_PREFIX):
+        return _relative_path(entry, cfg)
+
+    # ``workflow/...`` was previously an unsafe near-miss for ``workflows/...``.
+    # Continue to reject it rather than silently changing its meaning now that
+    # stored entries are relative to the workflows directory.
+    if entry.startswith("workflow/") or not cfg.is_workflow_path(
+        _WORKFLOWS_PREFIX + entry
+    ):
         raise PromotionError(
             E_WFLIST_SYNC,
             f"{cfg.workflows_list_file} contains an entry that cannot be safely normalized.",
             details=[raw],
-            remedy="Use canonical workflow paths such as workflows/example.json.",
+            remedy="Use a path relative to workflows/, such as example.json or "
+            "team/example.json.",
         )
     return entry
 
@@ -42,7 +67,8 @@ def desired_content(
         if path is not None and path not in seen:
             seen.add(path)
             ordered.append(path)
-    for path in required_workflow_paths:
+    for repository_path in required_workflow_paths:
+        path = _relative_path(repository_path, cfg)
         if path not in seen:
             seen.add(path)
             ordered.append(path)
