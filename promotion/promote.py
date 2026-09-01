@@ -294,7 +294,15 @@ def promote(
     existing_list = ""
     if git.object_type("HEAD", cfg.workflows_list_file) == "blob":
         existing_list = git.read_index_text(cfg.workflows_list_file)
-    desired = workflows_list.desired_content(existing_list, required_workflow_paths, cfg)
+    available_workflow_paths = [
+        path for path in git.index_paths() if cfg.is_workflow_path(path)
+    ]
+    desired = workflows_list.desired_content(
+        existing_list,
+        required_workflow_paths,
+        available_workflow_paths,
+        cfg,
+    )
     list_entries: list[str] | None = None
     if desired is None:
         log(

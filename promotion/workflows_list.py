@@ -55,16 +55,23 @@ def _normalize_entry(raw: str, cfg: Config) -> str | None:
 
 
 def desired_content(
-    existing: str, required_workflow_paths: list[str], cfg: Config
+    existing: str,
+    required_workflow_paths: list[str],
+    available_workflow_paths: list[str],
+    cfg: Config,
 ) -> str | None:
-    """Merge canonical existing entries with workflow paths in the final PR."""
+    """Merge existing entries with workflows that exist in final staging content."""
     if not required_workflow_paths:
         return None
     ordered: list[str] = []
     seen: set[str] = set()
+    available_entries = {
+        _relative_path(repository_path, cfg)
+        for repository_path in available_workflow_paths
+    }
     for raw in existing.splitlines():
         path = _normalize_entry(raw, cfg)
-        if path is not None and path not in seen:
+        if path is not None and path in available_entries and path not in seen:
             seen.add(path)
             ordered.append(path)
     for repository_path in required_workflow_paths:

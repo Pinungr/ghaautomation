@@ -423,6 +423,20 @@ def test_nested_workflow_is_stored_relative_to_workflows_directory(tmp_path: Pat
     assert result.workflows_list_entries == ["old.json", "pinaki/zyz.json"]
 
 
+def test_stale_workflow_list_entry_is_removed(tmp_path: Path) -> None:
+    remote, runner = _make_repository(
+        tmp_path,
+        "workflows/new.json\n",
+        staging_workflows_list="old.json\nmissing.json\n",
+    )
+
+    _run_promotion(runner)
+
+    assert _remote_text(remote, "reltest_30_08_2026", "workflows_list.txt") == (
+        "old.json\nnew.json"
+    )
+
+
 def test_delete_from_promotion_txt_is_applied_to_the_existing_staging_branch(tmp_path: Path) -> None:
     remote, runner = _make_repository(tmp_path, "DELETE|workflows/old.json\n")
 

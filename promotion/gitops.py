@@ -158,6 +158,14 @@ class Git:
             "diff", "--no-renames", "--name-status", "-z", base
         )
 
+    def index_paths(self) -> list[str]:
+        """All repository paths currently represented by the index."""
+        return [
+            path
+            for path in self.run_bytes("ls-files", "-z").decode("utf-8").split("\0")
+            if path
+        ]
+
     def _name_status(self, *args: str) -> list[tuple[str, str]]:
         """Parse NUL-delimited output from ``git diff --name-status``."""
         raw = self.out(*args)
